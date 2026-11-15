@@ -55,7 +55,7 @@ pip install -e .
     {
       "label": "把 call 的目标换成新地址",
       "signature": "4883ec28488bc84c8d4c24",
-      "at": 12,
+      "at": 11,
       "expect": "e8aabbccdd",
       "replacement": "e811223344"
     }
@@ -99,7 +99,7 @@ sigpatch/
   cli.py      命令行
 tests/
   pebuilder.py       现场合成假 PE
-  test_sigpatch.py   30 个用例
+  test_sigpatch.py   32 个用例
 ```
 
 `pe.py` 只解析到节区表为止，不碰导入表、不反汇编。需要更多信息的地方，接 Capstone 或 pefile 比在这里加代码合适。
@@ -111,6 +111,11 @@ python -m unittest discover -s tests -t .
 ```
 
 不依赖 pytest，也不读任何真实二进制——所有样本在 `tests/pebuilder.py` 里现场合成。
+
+## 设计取舍
+
+为什么不能写死 RVA、为什么失败要整体拒绝、签名该怎么选——记在
+[docs/design-notes.md](docs/design-notes.md)。改这块代码之前值得先看一眼。
 
 ## License
 
