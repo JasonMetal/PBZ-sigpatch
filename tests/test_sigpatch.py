@@ -272,5 +272,61 @@ class CliTests(unittest.TestCase):
         self.assertEqual(main([]), 2)
 
 
+class ExampleSpecTests(unittest.TestCase):
+    """examples/ 里的示例得真的能用。README 是照着它教的，错了会带偏读者。
+
+    之前这里踩过一次：签名 11 字节，at 写成了 12，单测全绿，但照 README
+    操作的人第一步 find 就失败。
+    """
+
+    def setUp(self):
+        root = os.path.dirname(HERE)
+        self.example = os.path.join(root, "examples", "spec.example.json")
+        self.dir = tempfile.mkdtemp(prefix="sigpatch-example-")
+
+    def tearDown(self):
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def test_example_spec_is_consistent(self):
+        with open(self.example, encoding="utf-8") as f:
+            spec = json.load(f)
+        self.assertIn("target", spec)
+        for item in spec["patches"]:
+            sig = bytes.fromhex(item["signature"])
+            rep = bytes.fromhex(item["replacement"])
+            exp = bytes.fromhex(item["expect"]) if item.get("expect") else None
+            at = int(item.get("at", 0))
+            self.assertGreaterEqual(at, len(sig),
+                                    "示例里 at 落在签名内部，打完补丁签名就没了")
+            if exp is not None:
+                self.assertEqual(len(exp), len(rep),
+                                 "示例里 expect 与 replacement 长度不一致")
+
+    def test_example_spec_applies_to_matching_binary(self):
+        # 用示例里的签名和 at 现场造一个目标，走一遍 find → apply → verify。
+        with open(self.example, encoding="utf-8") as f:
+            spec = json.load(f)
+        item = spec["patches"][0]
+        sig = bytes.fromhex(item["signature"])
+        old = bytes.fromhex(item["expect"])
+        at = int(item["at"])
+
+        body = b"\x90" * 0x100 + sig + old + b"\xcc" * 0x100
+        data, _ = build_pe([(".text", body)])
+        target = os.path.join(self.dir, "demo.dll")
+        write_atomic(target, data)
+
+        spec["target"] = "demo.dll"
+        spec_path = os.path.join(self.dir, "spec.json")
+        with open(spec_path, "w", encoding="utf-8") as f:
+            json.dump(spec, f, ensure_ascii=False)
+
+        self.assertEqual(main(["find", spec_path]), 0)
+        self.assertEqual(main(["apply", spec_path]), 0)
+        self.assertEqual(main(["verify", spec_path]), 0)
+        self.assertEqual(main(["restore", target, "--yes"]), 0)
+        self.assertEqual(open(target, "rb").read(), data)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
